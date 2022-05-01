@@ -6,6 +6,13 @@
 #ifndef SRC_SDCARDSTUFF_H_
 #define SRC_SDCARDSTUFF_H_
 
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#include "main.h"
+#include "fatfs.h"
+
 int formatSD(){
 
 	/*	formatSD
@@ -39,13 +46,66 @@ int formatSD(){
 	return 0;
 }
 
-int writeColSD(float fileName, float data[], int noElements){
+int initFileSD(int fileName){
+
+	/*	initFileSD
+		 *
+		 * 	desc:		takes an int as a filename, and creates a csv file called [int].csv.
+		 * 				It also adds header data.
+		 *
+		 * 	inputs: 	int fileName	:	name of file to write, '.csv' will be appended to it
+		 *
+		 * 	returns:	int
+		 * 				-1	:	returns -1 if SD card cannot be mounted
+		 * 				-2	:	returns -2 if the file to be written cannot be opened/created
+		 * 				-3	:	returns -3 if a write operation fails
+		 * 				-4 	: 	returns -4 if the file close operation fails
+		 * 				-5	: 	returns -5 if the SD card unmount fails
+		 * 				else:	returns number of bytes written to the SD card
+		 *
+		 */
+
+	FRESULT res; /* FatFs function common result code */
+	uint32_t byteswritten = 0; /* File write/read counts */
+
+	char buffer[_MAX_SS];
+
+	res = f_mount(&SDFatFS, (TCHAR const*)SDPath, 1);	// mount the SD card
+	if(res != FR_OK){return -1;}
+
+	sprintf(buffer, "%d.csv", fileName);	// Print filename into buffer
+	//sprintf(buffer, "%d.txt", fileName);
+
+	res = f_open(&SDFile, buffer, FA_CREATE_ALWAYS | FA_WRITE); //	opens file, , create
+	if(res != FR_OK){return -2;}
+
+	int bytes = sprintf(buffer, "0               lines of data\n");	//  prints number of lines into buffer
+
+	res = f_write(&SDFile, buffer, bytes, (void *)&byteswritten);	// prints buffer to file
+	if((byteswritten == 0) || (res != FR_OK)){return -3;}
+
+	bytes = sprintf(buffer, "X Acc,Y Acc,Z Acc,Orientation1,Orientation2,Orientation3,Orientation4,Mag1,Mag2,Mag3, Time\n");
+
+	res = f_write(&SDFile, buffer, bytes, (void *)&byteswritten); // write header file
+	if((byteswritten == 0) || (res != FR_OK)){return -3;} // if write fails throw error
+
+	res = f_close(&SDFile);	// close the file
+	if(res != FR_OK){return -4;}
+
+	res = f_mount(0, (TCHAR const*)SDPath, 1); // unmount SD
+	if(res != FR_OK){return -5;}
+
+	return byteswritten;
+
+}
+
+int writeColSD(int fileName, float data[], int noElements){
 
 	/*	writeColSD
 	 *
 	 * 	desc:		takes one array of floats, writes it to a file in the SD card.
 	 *
-	 * 	inputs: 	float filename	:	name of file to write, '.csv' will be appended to it
+	 * 	inputs: 	int fileName	:	name of file to write, '.csv' will be appended to it
 	 * 				float* data  	:	an array containing the floats to be written to file
 	 * 				int noElements	:	an int representing the number of elements to write
 	 *
@@ -72,7 +132,7 @@ int writeColSD(float fileName, float data[], int noElements){
 	res = f_mount(&SDFatFS, (TCHAR const*)SDPath, 1);	// mount the SD card
 	if(res != FR_OK){return -1;}
 
-	sprintf(buffer, "%f.csv", fileName);	// Print filename into buffer
+	sprintf(buffer, "%d.csv", fileName);	// Print filename into buffer
 	//sprintf(buffer, "%d.txt", fileName);
 
 	////////////// should have a case for if file was created or not
@@ -129,6 +189,18 @@ int writeColSD(float fileName, float data[], int noElements){
 //			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_7); //Toggle the state of pin BLU
 	  }
 
+	res = f_lseek(&SDFile, 0); // set cursor to beginning of file
+	f_gets(buffer, _MAX_SS, &SDFile); // get the first line from the file
+	if((byteswritten == 0) || (res != FR_OK)){return -3;}	// if fails return error
+
+	int noRows = atoi(buffer);			// turn first line from file into int
+	noRows = noRows + noElements;		// add elements just printed to file to running total
+
+	res = f_lseek(&SDFile, 0);
+	if((byteswritten == 0) || (res != FR_OK)){return -3;}	// if fails return error
+
+
+
 	  res = f_close(&SDFile);	// close the file
 	  if(res != FR_OK){return -4;}
 
@@ -138,13 +210,13 @@ int writeColSD(float fileName, float data[], int noElements){
 	  return byteswritten;
 }
 
-int writeSD(float fileName, float data0[], float data1[], float data2[], float data3[], float data4[], float data5[], float data6[], float data7[], float data8[], float data9[], float data10[], int noElements){
+int writeSD(int fileName, float data0[], float data1[], float data2[], float data3[], float data4[], float data5[], float data6[], float data7[], float data8[], float data9[], float data10[], int noElements){
 
 	/*	writeSD
 	 *
 	 * 	desc:		takes eleven array of floats, writes them to a csv file in the SD card.
 	 *
-	 * 	inputs: 	float filename			:	name of file to write, '.csv' will be appended to it
+	 * 	inputs: 	int fileName			:	name of file to write, '.csv' will be appended to it
 	 * 				float* data0 - data10  	:	arrays containing the floats to be written to file. Should all be same length
 	 * 				int noElements			:	an int representing the number of elements from each array to write
 	 *
@@ -170,17 +242,17 @@ int writeSD(float fileName, float data0[], float data1[], float data2[], float d
 	res = f_mount(&SDFatFS, (TCHAR const*)SDPath, 1);	// mount the SD card
 	if(res != FR_OK){return -1;}
 
-	sprintf(buffer, "%f.csv", fileName);	// Print filename into buffer
+	sprintf(buffer, "%d.csv", fileName);	// Print filename into buffer
 	//sprintf(buffer, "%d.txt", fileName);
 
-	res = f_open(&SDFile, buffer, FA_OPEN_APPEND | FA_WRITE); //	opens file, if exists append, ow create
+	res = f_open(&SDFile, buffer, FA_OPEN_APPEND | FA_WRITE | FA_READ); //	opens file, if exists append, ow create
 	if(res != FR_OK){return -2;}
 
 	// Header data to print
-	bytes = sprintf(subBuf, "%d lines of data\nX Acc,Y Acc,Z Acc,Orientation1,Orientation2,Orientation3,Orientation4,Mag1,Mag2,Mag3, Time\n", noElements);
+	//bytes = sprintf(subBuf, "%d lines of data\nX Acc,Y Acc,Z Acc,Orientation1,Orientation2,Orientation3,Orientation4,Mag1,Mag2,Mag3, Time\n", noElements);
 
-	res = f_write(&SDFile, subBuf, bytes, (void *)&byteswritten); // write header file
-	if((byteswritten == 0) || (res != FR_OK)){return -3;} // if write fails throw error
+	//res = f_write(&SDFile, subBuf, bytes, (void *)&byteswritten); // write header file
+	//if((byteswritten == 0) || (res != FR_OK)){return -3;} // if write fails throw error
 
 	while(itt < noElements){	// do while there are elements to print
 
@@ -227,6 +299,19 @@ int writeSD(float fileName, float data0[], float data1[], float data2[], float d
 //		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_7); //Toggle the state of pin BLU
 	  }
 
+ 	res = f_lseek(&SDFile, 0); // set cursor to beginning of file
+	f_gets(buffer, _MAX_SS, &SDFile); // get the first line from the file
+	if((byteswritten == 0) || (res != FR_OK)){return -3;}	// if fails return error
+
+	int noRows = atoi(buffer);			// turn first line from file into int
+	noRows = noRows + noElements;		// add elements just printed to file to running total
+
+	res = f_lseek(&SDFile, 0);
+	if((byteswritten == 0) || (res != FR_OK)){return -3;}	// if fails return error
+
+	sprintf(buffer, "%d", noRows);
+	f_puts(buffer, &SDFile);
+
 	  res = f_close(&SDFile);	// close the SD file
 	  if(res != FR_OK){return -4;}
 
@@ -236,14 +321,14 @@ int writeSD(float fileName, float data0[], float data1[], float data2[], float d
 	  return byteswritten;
 }
 
-int readNoRowsSD(float fileName){
+int readNoRowsSD(int fileName){
 
 	/*	ReadNoRowsSD
 	 *
 	 * 	desc:		takes a filename, and returns the number of rows in the file. The number of rows should be written
 	 * 				in the first line of the file.
 	 *
-	 * 	inputs: 	float filename	:	name of file to write, '.csv' will be appended to it
+	 * 	inputs: 	int fileName	:	name of file to write, '.csv' will be appended to it
 	 *
 	 * 	returns:	int
 	 * 				-1	:	returns -1 if SD card cannot be mounted
@@ -260,7 +345,7 @@ int readNoRowsSD(float fileName){
 	res = f_mount(&SDFatFS, (TCHAR const*)SDPath, 1); // mount the SD card
 	if(res != FR_OK){return -1;}	// return Error if fails
 
-	sprintf(buffer, "%f.csv", fileName);	// prints the filename into the buffer
+	sprintf(buffer, "%d.csv", fileName);	// prints the filename into the buffer
 	//sprintf(buffer, "%d.txt", fileName);
 
 	res = f_open(&SDFile, buffer, FA_READ);	// open the file
@@ -282,13 +367,13 @@ int readNoRowsSD(float fileName){
 
 }
 
-int readSD(float fileName, float data[], int noElements, int column){
+int readSD(int fileName, float data[], int noElements, int column){
 
 	/*	readSD
 		 *
 		 * 	desc:		takes a csv file on the SD cart and reads one column of the file into an array of floats.
 		 *
-		 * 	inputs: 	float filename	:	name of file to write, '.csv' will be appended to it
+		 * 	inputs: 	int fileName	:	name of file to write, '.csv' will be appended to it
 		 * 				float* data  	:	an array containing the floats to be written to file
 		 * 				int noElements	:	an int representing the number of elements to write
 		 * 				int column		:	the column from from left to be read. Leftmost column is 0
@@ -314,7 +399,7 @@ int readSD(float fileName, float data[], int noElements, int column){
 	res = f_mount(&SDFatFS, (TCHAR const*)SDPath, 1);	// mount the SD card
 	if(res != FR_OK){return -1;}	// if fails return error
 
-	sprintf(buffer, "%f.csv", fileName);	// print filename to buffer
+	sprintf(buffer, "%d.csv", fileName);	// print filename to buffer
 	//sprintf(buffer, "%d.txt", fileName);
 
 	res = f_open(&SDFile, buffer, FA_READ);	// open the file
@@ -398,5 +483,131 @@ int readSD(float fileName, float data[], int noElements, int column){
 
 	return itt;
 }
+
+int readThreeColSD(int fileName, float data1[], int column1, float data2[], int column2, float data3[], int column3, int noElements){
+
+	/*	readThreeColSD
+		 *
+		 * 	desc:		takes a csv file on the SD cart and reads three columns of the file into three arrays of floats.
+		 *
+		 * 	inputs: 	int fileName	:	name of file to write, '.csv' will be appended to it
+		 * 				float* data  	:	an array containing the floats to be written to file
+		 * 				int noElements	:	an int representing the number of elements to write
+		 * 				int column1		:	column 1 from from left to be read. Leftmost column is 0
+		 * 				int column2		:	column 2 from from left to be read. Leftmost column is 0
+		 * 				int column3		:	column 3 from from left to be read. Leftmost column is 0
+		 * 	returns:	int
+		 * 				-1	:	returns -1 if SD card cannot be mounted
+		 * 				-2	:	returns -2 if the file to be written cannot be opened/created
+		 * 				-3	:	returns -3 if a read operation fails
+		 * 				-4 	: 	returns -4 if the file close operation fails
+		 * 				-5	: 	returns -5 if the SD card unmount fails
+		 * 				else:	returns number of bytes written to the SD card
+		 *
+		 */
+
+
+	FRESULT res; /* FatFs function common result code */
+	char buffer[_MAX_SS];
+	char subBuf[50];
+	int itt = 0;
+	int offset = 0;
+	int comma = 0;
+
+	res = f_mount(&SDFatFS, (TCHAR const*)SDPath, 1);	// mount the SD card
+	if(res != FR_OK){return -1;}	// if fails return error
+
+	sprintf(buffer, "%d.csv", fileName);	// print filename to buffer
+	//sprintf(buffer, "%d.txt", fileName);
+
+	res = f_open(&SDFile, buffer, FA_READ);	// open the file
+	if(res != FR_OK){return -2;}	// if fails return error
+
+	//Read text from file and store in data[]
+
+	f_gets(buffer, _MAX_SS, &SDFile); // get rid of header data
+	f_gets(buffer, _MAX_SS, &SDFile); // get rid of header data
+
+	while((!f_eof(&SDFile)) && itt <= noElements){
+
+		UINT bytesRead = 0;
+		// get the line from the file
+		f_read(&SDFile, buffer, _MAX_SS, &bytesRead);	// read 512 bytes from the file
+		if(res != FR_OK){return -3;}
+
+		int itc = 0;
+		int inc = offset;
+		while((itc < bytesRead) && (itt < noElements)){
+
+			if(comma == column1){	// checks for row of sd file by counting commas
+				subBuf[inc] = buffer[itc];	// if in right row, copy chars into subbuffer
+				++inc;
+ 				if((subBuf[inc -1] == '\n') || (subBuf[inc -1] == ',')){	// if end of row,
+					float test = atof(subBuf);	// turn float in subbuffer into float
+					data1[itt] = test;	// save float to array
+					inc = 0;
+
+				}
+
+			}
+
+			if(comma == column2){	// checks for row of sd file by counting commas
+				subBuf[inc] = buffer[itc];	// if in right row, copy chars into subbuffer
+				++inc;
+				if((subBuf[inc -1] == '\n') || (subBuf[inc -1] == ',')){	// if end of row,
+					float test = atof(subBuf);	// turn float in subbuffer into float
+					data2[itt] = test;	// save float to array
+					inc = 0;
+
+				}
+
+			}
+
+			if(comma == column3){	// checks for row of sd file by counting commas
+				subBuf[inc] = buffer[itc];	// if in right row, copy chars into subbuffer
+				++inc;
+				if((subBuf[inc -1] == '\n') || (subBuf[inc -1] == ',')){	// if end of row,
+					float test = atof(subBuf);	// turn float in subbuffer into float
+					data3[itt] = test;	// save float to array
+					inc = 0;
+
+				}
+
+			}
+
+			++itc;
+
+			if((buffer[itc -1] == ',')){	// counts commas
+				++comma;
+			}
+
+			if((buffer[itc -1] == '\n')){	// resets commas at end of line
+				comma = 0;
+				++itt;
+			}
+
+		}
+
+		offset = inc;
+
+//		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14); //Toggle the state of pin RED
+//		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_7); //Toggle the state of pin BLU
+
+	}
+
+//	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_RESET);
+//	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+
+	res = f_close(&SDFile);	// close the file
+	if(res != FR_OK){return -4;}	// if fails return error
+
+	//res = f_mount(&SDFatFS, (TCHAR const*)NULL, 0);
+	res = f_mount(0, (TCHAR const*)SDPath, 1);	// unmount sd card
+	if(res != FR_OK){return -5;}	// if fails return error
+
+	return itt;
+}
+
+
 
 #endif /* SRC_SDCARDSTUFF_H_ */
